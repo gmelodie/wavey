@@ -8,6 +8,8 @@ use std::collections::HashMap;
 const SHIP_SIZE: f32 = 10.0;
 const NUM_ASTEROIDS: usize = 10;
 const ASTEROID_THICKNESS: f32 = 1.0;
+const ARC_GROWTH_RATE: f32 = 5.0;
+const SCAN_SPEED: usize = 3;
 
 // struct Radar {}
 // impl Iterator for Radar {
@@ -140,9 +142,8 @@ fn draw_circle_except_angles(
 
     // Iterate over excluded angles and overlay "blackout" regions
     for (&rotation, &angle_radius) in excluded_angles.iter() {
-        let precision = 100.0;
         // Convert the angle and radius to radians and restrict the range
-        let arc = rotation as f32 - (radius / angle_radius as f32) as f32;
+        let arc = rotation as f32 + (radius / angle_radius as f32) as f32;
 
         draw_arc(
             center.x,
@@ -151,7 +152,7 @@ fn draw_circle_except_angles(
             radius,
             rotation as f32,
             1.0,
-            arc,
+            arc * ARC_GROWTH_RATE,
             BLACK,
         );
     }
@@ -161,7 +162,9 @@ async fn circle_render(edges: &Vec<Line>, center: Vec2) {
     let mut excluded_angles: HashMap<usize, usize> = HashMap::new(); // (angle, radius)
     let mut drawn_pixels: Vec<Vec2> = Vec::new();
 
-    for scan_radius in SHIP_SIZE as usize..(screen_width() * f32::sqrt(2.0) / 2.0) as usize {
+    for scan_radius in
+        (SHIP_SIZE as usize..(screen_width() * f32::sqrt(2.0) / 2.0) as usize).step_by(SCAN_SPEED)
+    {
         draw_circle(center.x, center.y, SHIP_SIZE, WHITE);
         draw_circle_except_angles(center, scan_radius as f32, 0.5, GREEN, &excluded_angles);
         // TODO: glitter background
