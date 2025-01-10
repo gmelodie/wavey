@@ -1,9 +1,9 @@
 use macroquad::prelude::{
-    clear_background, draw_circle, draw_circle_lines, draw_rectangle, next_frame, screen_height,
-    screen_width, Vec2, BLACK, GREEN, RED, WHITE,
+    clear_background, draw_arc, draw_circle, draw_circle_lines, draw_rectangle, next_frame,
+    screen_height, screen_width, Color, Vec2, BLACK, GREEN, RED, WHITE,
 };
 use rand::{thread_rng, Rng};
-use std::collections::HashSet;
+use std::collections::HashMap;
 
 const SHIP_SIZE: f32 = 10.0;
 const NUM_ASTEROIDS: usize = 10;
@@ -116,11 +116,11 @@ fn polar2euclidean(center: Vec2, radius: f32, angle: f32) -> Vec2 {
 fn pixels_in_circle(
     center: Vec2,
     radius: f32,
-    excluded_angles: &HashSet<usize>,
+    excluded_angles: &HashMap<usize, usize>,
 ) -> Vec<(Vec2, usize)> {
     let mut pixels = Vec::new();
     for angle in 0..=360 {
-        if excluded_angles.contains(&angle) {
+        if excluded_angles.contains_key(&angle) {
             continue;
         }
         pixels.push((polar2euclidean(center, radius, angle as f32), angle));
@@ -133,33 +133,44 @@ fn draw_circle_except_angles(
     radius: f32,
     thickness: f32,
     color: Color,
-    excluded_angles: &HashSet<usize>,
+    excluded_angles: &HashMap<usize, usize>, // (angle in degrees, radius in units)
 ) {
-    draw_circle_lines(center.x, center.y, scan_radius as f32, thickness, GREEN);
-    // TODO: draw on top of angles (polar coordinates)
+    // Draw the base circle first
+    draw_circle_lines(center.x, center.y, radius, thickness, color);
+
+    // Iterate over excluded angles and overlay "blackout" regions
+    for (&rotation, &angle_radius) in excluded_angles.iter() {
+        let precision = 100.0;
+        // Convert the angle and radius to radians and restrict the range
+        let arc = rotation as f32 - (radius / angle_radius as f32) as f32;
+
+        draw_arc(
+            center.x,
+            center.y,
+            1,
+            radius,
+            rotation as f32,
+            1.0,
+            arc,
+            BLACK,
+        );
+    }
 }
 
 async fn circle_render(edges: &Vec<Line>, center: Vec2) {
-    let mut excluded_angles: HashSet<usize> = HashSet::new();
+    let mut excluded_angles: HashMap<usize, usize> = HashMap::new(); // (angle, radius)
     let mut drawn_pixels: Vec<Vec2> = Vec::new();
 
     for scan_radius in SHIP_SIZE as usize..(screen_width() * f32::sqrt(2.0) / 2.0) as usize {
         draw_circle(center.x, center.y, SHIP_SIZE, WHITE);
-        draw_circle_except_angles(
-            center.x,
-            center.y,
-            scan_radius as f32,
-            0.5,
-            GREEN,
-            excluded_angles,
-        );
+        draw_circle_except_angles(center, scan_radius as f32, 0.5, GREEN, &excluded_angles);
         // TODO: glitter background
         for (pixel, angle) in pixels_in_circle(center, scan_radius as f32, &excluded_angles) {
             for edge in edges {
                 if edge.near(pixel, 1.0) {
                     // draw pixel
                     drawn_pixels.push(pixel);
-                    excluded_angles.insert(angle);
+                    excluded_angles.insert(angle, scan_radius);
                     break;
                 }
             }
