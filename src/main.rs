@@ -1,15 +1,19 @@
-use macroquad::prelude::{
-    clear_background, draw_arc, draw_circle, draw_circle_lines, draw_rectangle, next_frame,
-    screen_height, screen_width, Color, Vec2, BLACK, GREEN, RED, WHITE,
+use macroquad::{
+    input::is_key_down,
+    prelude::{
+        draw_arc, draw_circle, draw_circle_lines, draw_rectangle, is_key_pressed, next_frame,
+        screen_height, screen_width, Color, KeyCode, Vec2, BLACK, GREEN, RED, WHITE,
+    },
 };
 use rand::{thread_rng, Rng};
 use std::collections::HashMap;
 
 const SHIP_SIZE: f32 = 10.0;
 const NUM_ASTEROIDS: usize = 10;
-const ASTEROID_THICKNESS: f32 = 1.0;
-const ARC_GROWTH_RATE: f32 = 5.0;
-const SCAN_SPEED: usize = 3;
+const ARC_GROWTH_RATE: f32 = 1.0;
+const SCAN_SPEED: usize = 7;
+const ANGLE_PRECISION: usize = 100;
+const CLOSENESS_TOLERANCE: f32 = 0.3;
 
 // struct Radar {}
 // impl Iterator for Radar {
@@ -64,7 +68,6 @@ struct Asteroid {
     sides: u8,
     radius: f32,
     rotation: f32,
-    last_scanned: f32,
 }
 
 impl Asteroid {
@@ -79,7 +82,6 @@ impl Asteroid {
             sides: rng.gen_range(3..8),
             radius: rng.gen_range(5.0..40.0),
             rotation: rng.gen_range(0.0..360.0),
-            last_scanned: 0.0,
         }
     }
 
@@ -121,11 +123,14 @@ fn pixels_in_circle(
     excluded_angles: &HashMap<usize, usize>,
 ) -> Vec<(Vec2, usize)> {
     let mut pixels = Vec::new();
-    for angle in 0..=360 {
+    for angle in 0..=360 * ANGLE_PRECISION {
         if excluded_angles.contains_key(&angle) {
             continue;
         }
-        pixels.push((polar2euclidean(center, radius, angle as f32), angle));
+        pixels.push((
+            polar2euclidean(center, radius, angle as f32 / ANGLE_PRECISION as f32),
+            angle,
+        ));
     }
     pixels
 }
@@ -143,12 +148,12 @@ fn draw_circle_except_angles(
     // Iterate over excluded angles and overlay "blackout" regions
     for (&rotation, &angle_radius) in excluded_angles.iter() {
         // Convert the angle and radius to radians and restrict the range
-        let arc = rotation as f32 + (radius / angle_radius as f32) as f32;
+        let arc = rotation as f32 / ANGLE_PRECISION as f32 + (radius / angle_radius as f32);
 
         draw_arc(
             center.x,
             center.y,
-            1,
+            0,
             radius,
             rotation as f32,
             1.0,
@@ -162,15 +167,12 @@ async fn circle_render(edges: &Vec<Line>, center: Vec2) {
     let mut excluded_angles: HashMap<usize, usize> = HashMap::new(); // (angle, radius)
     let mut drawn_pixels: Vec<Vec2> = Vec::new();
 
-    for scan_radius in
-        (SHIP_SIZE as usize..(screen_width() * f32::sqrt(2.0) / 2.0) as usize).step_by(SCAN_SPEED)
-    {
-        draw_circle(center.x, center.y, SHIP_SIZE, WHITE);
+    for scan_radius in (SHIP_SIZE as usize..screen_width() as usize).step_by(SCAN_SPEED) {
         draw_circle_except_angles(center, scan_radius as f32, 0.5, GREEN, &excluded_angles);
         // TODO: glitter background
         for (pixel, angle) in pixels_in_circle(center, scan_radius as f32, &excluded_angles) {
             for edge in edges {
-                if edge.near(pixel, 1.0) {
+                if edge.near(pixel, CLOSENESS_TOLERANCE) {
                     // draw pixel
                     drawn_pixels.push(pixel);
                     excluded_angles.insert(angle, scan_radius);
@@ -179,28 +181,48 @@ async fn circle_render(edges: &Vec<Line>, center: Vec2) {
             }
         }
         for pixel in &drawn_pixels {
-            draw_rectangle(pixel.x, pixel.y, 2.0, 2.0, RED);
+            draw_rectangle(pixel.x, pixel.y, 1.0, 1.0, RED);
         }
-        // Wait for the next frame
+        draw_circle(center.x, center.y, SHIP_SIZE, WHITE);
         next_frame().await;
     }
 }
 
 #[macroquad::main("Wavey")]
 async fn main() {
-    let ship = Vec2::new(screen_width() / 2.0, screen_height() / 2.0);
+    let mut ship = Vec2::new(screen_width() / 2.0, screen_height() / 2.0);
     let mut asteroids: Vec<Asteroid> = Vec::new();
     for _i in 0..NUM_ASTEROIDS {
         let asteroid = Asteroid::random_asteroid();
         asteroids.push(asteroid);
     }
+    let mut edges = Vec::new();
+    for asteroid in &asteroids {
+        edges.extend(asteroid.edges());
+    }
 
     loop {
-        // TODO: if J pressed
-        let mut edges = Vec::new();
-        for asteroid in &asteroids {
-            edges.extend(asteroid.edges());
+        draw_circle(ship.x, ship.y, SHIP_SIZE, WHITE);
+        // if J pressed
+        if is_key_pressed(KeyCode::J) {
+            circle_render(&edges, ship).await;
         }
-        circle_render(&edges, ship).await;
+        if is_key_down(KeyCode::W) && ship.y >= 0.0 + SHIP_SIZE {
+            // up
+            ship.y -= 1.0;
+        }
+        if is_key_down(KeyCode::S) && ship.y <= screen_height() - SHIP_SIZE {
+            // down
+            ship.y += 1.0;
+        }
+        if is_key_down(KeyCode::A) && ship.x >= 0.0 + SHIP_SIZE {
+            // left
+            ship.x -= 1.0;
+        }
+        if is_key_down(KeyCode::D) && ship.x <= screen_width() - SHIP_SIZE {
+            // right
+            ship.x += 1.0;
+        }
+        next_frame().await;
     }
 }
