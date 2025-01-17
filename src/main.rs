@@ -1,13 +1,16 @@
 use macroquad::{
     input::is_key_down,
     prelude::{
-        draw_arc, draw_circle, draw_circle_lines, draw_rectangle, is_key_pressed, next_frame,
-        screen_height, screen_width, Color, KeyCode, Vec2, BLACK, GREEN, RED, WHITE,
+        draw_arc, draw_circle, draw_circle_lines, draw_rectangle, draw_text, get_frame_time,
+        is_key_pressed, next_frame, screen_height, screen_width, Color, KeyCode, Vec2, BLACK,
+        GREEN, RED, WHITE,
     },
 };
 use rand::{thread_rng, Rng};
 use std::collections::HashMap;
+use std::{thread, time};
 
+const DST_SIZE: f32 = 5.0;
 const SHIP_SIZE: f32 = 10.0;
 const NUM_ASTEROIDS: usize = 10;
 const ARC_GROWTH_RATE: f32 = 1.0;
@@ -163,11 +166,21 @@ fn draw_circle_except_angles(
     }
 }
 
-async fn circle_render(edges: &Vec<Line>, center: Vec2) {
+fn interrupted_by_movement() -> bool {
+    is_key_down(KeyCode::W)
+        || is_key_down(KeyCode::S)
+        || is_key_down(KeyCode::A)
+        || is_key_down(KeyCode::D)
+}
+
+async fn circle_render(edges: &Vec<Line>, center: Vec2, destination: Vec2) {
     let mut excluded_angles: HashMap<usize, usize> = HashMap::new(); // (angle, radius)
     let mut drawn_pixels: Vec<Vec2> = Vec::new();
 
     for scan_radius in (SHIP_SIZE as usize..screen_width() as usize).step_by(SCAN_SPEED) {
+        if interrupted_by_movement() {
+            break;
+        }
         draw_circle_except_angles(center, scan_radius as f32, 0.5, GREEN, &excluded_angles);
         // TODO: glitter background
         for (pixel, angle) in pixels_in_circle(center, scan_radius as f32, &excluded_angles) {
@@ -184,15 +197,20 @@ async fn circle_render(edges: &Vec<Line>, center: Vec2) {
             draw_rectangle(pixel.x, pixel.y, 1.0, 1.0, RED);
         }
         draw_circle(center.x, center.y, SHIP_SIZE, WHITE);
+        draw_circle(destination.x, destination.y, DST_SIZE, RED);
         next_frame().await;
     }
 }
 
-#[macroquad::main("Wavey")]
-async fn main() {
+async fn play_game(level: &usize) -> bool {
     let mut ship = Vec2::new(screen_width() / 2.0, screen_height() / 2.0);
+    let mut rng = thread_rng();
+    let destination = Vec2::new(
+        rng.gen_range(0.0..=screen_width()),
+        rng.gen_range(0.0..=screen_height()),
+    );
     let mut asteroids: Vec<Asteroid> = Vec::new();
-    for _i in 0..NUM_ASTEROIDS {
+    for _i in 0..NUM_ASTEROIDS + level {
         let asteroid = Asteroid::random_asteroid();
         asteroids.push(asteroid);
     }
@@ -203,9 +221,10 @@ async fn main() {
 
     loop {
         draw_circle(ship.x, ship.y, SHIP_SIZE, WHITE);
+        draw_circle(destination.x, destination.y, DST_SIZE, RED);
         // if J pressed
-        if is_key_pressed(KeyCode::J) {
-            circle_render(&edges, ship).await;
+        if is_key_pressed(KeyCode::Space) {
+            circle_render(&edges, ship, destination).await;
         }
         if is_key_down(KeyCode::W) && ship.y >= 0.0 + SHIP_SIZE {
             // up
@@ -223,6 +242,65 @@ async fn main() {
             // right
             ship.x += 1.0;
         }
+        // if ship touched an asteroid, die
+        for asteroid in &asteroids {
+            for edge in asteroid.edges() {
+                if edge.near(ship, SHIP_SIZE) {
+                    return false;
+                }
+            }
+        }
+        if ship.distance(destination) <= SHIP_SIZE + DST_SIZE {
+            return true;
+        }
         next_frame().await;
+    }
+}
+
+async fn play_games() -> bool {
+    for level in 1..50 {
+        if !play_game(&level).await {
+            return false;
+        }
+        next_frame().await;
+    }
+    true
+}
+
+#[macroquad::main("Wavey")]
+async fn main() {
+    loop {
+        let win = play_games().await;
+        while !is_key_pressed(KeyCode::Y) && !is_key_pressed(KeyCode::N) {
+            if win {
+                draw_text(
+                    "YOU WIN!",
+                    screen_width() / 2.0 - 75.0,
+                    screen_height() / 2.0,
+                    30.0,
+                    WHITE,
+                );
+            } else {
+                draw_text(
+                    "YOU LOSE!",
+                    screen_width() / 2.0 - 75.0,
+                    screen_height() / 2.0,
+                    30.0,
+                    WHITE,
+                );
+            }
+            draw_text(
+                "PLAY AGAIN? (Y/N)",
+                screen_width() / 2.0 - 100.0,
+                screen_height() / 2.0 + 20.0,
+                30.0,
+                WHITE,
+            );
+            next_frame().await;
+        }
+
+        if is_key_pressed(KeyCode::N) {
+            return;
+        }
     }
 }
