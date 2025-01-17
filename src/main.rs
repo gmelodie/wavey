@@ -173,7 +173,7 @@ fn interrupted_by_movement() -> bool {
         || is_key_down(KeyCode::D)
 }
 
-async fn circle_render(edges: &Vec<Line>, center: Vec2, destination: Vec2) {
+async fn circle_render(edges: &Vec<Line>, center: Vec2, destination: Vec2, scans: usize) {
     let mut excluded_angles: HashMap<usize, usize> = HashMap::new(); // (angle, radius)
     let mut drawn_pixels: Vec<Vec2> = Vec::new();
 
@@ -198,11 +198,13 @@ async fn circle_render(edges: &Vec<Line>, center: Vec2, destination: Vec2) {
         }
         draw_circle(center.x, center.y, SHIP_SIZE, WHITE);
         draw_circle(destination.x, destination.y, DST_SIZE, RED);
+        draw_text(&format!("Scans: {scans}"), 20.0, 20.0, 20.0, WHITE);
         next_frame().await;
     }
 }
 
-async fn play_game(level: &usize) -> bool {
+async fn play_level(level: &usize) -> bool {
+    let mut scans = 12 - (level / 3) as usize;
     let mut ship = Vec2::new(screen_width() / 2.0, screen_height() / 2.0);
     let mut rng = thread_rng();
     let destination = Vec2::new(
@@ -220,11 +222,17 @@ async fn play_game(level: &usize) -> bool {
     }
 
     loop {
+        draw_text(&format!("Scans: {scans}"), 20.0, 20.0, 20.0, WHITE);
         draw_circle(ship.x, ship.y, SHIP_SIZE, WHITE);
         draw_circle(destination.x, destination.y, DST_SIZE, RED);
         // if J pressed
         if is_key_pressed(KeyCode::Space) {
-            circle_render(&edges, ship, destination).await;
+            if scans == 0 {
+                // TODO: beep wrong sound
+            } else {
+                scans -= 1;
+                circle_render(&edges, ship, destination, scans).await;
+            }
         }
         if is_key_down(KeyCode::W) && ship.y >= 0.0 + SHIP_SIZE {
             // up
@@ -259,7 +267,7 @@ async fn play_game(level: &usize) -> bool {
 
 async fn play_games() -> bool {
     for level in 1..50 {
-        if !play_game(&level).await {
+        if !play_level(&level).await {
             return false;
         }
         next_frame().await;
