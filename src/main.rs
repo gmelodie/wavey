@@ -1,14 +1,12 @@
 use macroquad::{
     input::is_key_down,
     prelude::{
-        draw_arc, draw_circle, draw_circle_lines, draw_rectangle, draw_text, get_frame_time,
-        is_key_pressed, next_frame, screen_height, screen_width, Color, KeyCode, Vec2, BLACK,
-        GREEN, RED, WHITE,
+        draw_arc, draw_circle, draw_circle_lines, draw_rectangle, draw_text, is_key_pressed,
+        next_frame, screen_height, screen_width, Color, KeyCode, Vec2, BLACK, GREEN, RED, WHITE,
     },
 };
 use rand::{thread_rng, Rng};
 use std::collections::HashMap;
-use std::{thread, time};
 
 const DST_SIZE: f32 = 5.0;
 const SHIP_SIZE: f32 = 10.0;
@@ -74,10 +72,10 @@ struct Asteroid {
 }
 
 impl Asteroid {
-    fn random_asteroid() -> Self {
+    fn random_asteroid(ship: Vec2) -> Self {
         let mut rng = thread_rng();
 
-        Self {
+        let asteroid = Self {
             pos: Vec2::new(
                 rng.gen_range(0.0..=screen_width()),
                 rng.gen_range(0.0..=screen_height()),
@@ -85,7 +83,13 @@ impl Asteroid {
             sides: rng.gen_range(3..8),
             radius: rng.gen_range(5.0..40.0),
             rotation: rng.gen_range(0.0..360.0),
+        };
+        for edge in asteroid.edges() {
+            if edge.near(ship, SHIP_SIZE) {
+                return Self::random_asteroid(ship);
+            }
         }
+        asteroid
     }
 
     fn vertices(&self) -> Vec<Vec2> {
@@ -213,7 +217,7 @@ async fn play_level(level: &usize) -> bool {
     );
     let mut asteroids: Vec<Asteroid> = Vec::new();
     for _i in 0..NUM_ASTEROIDS + level {
-        let asteroid = Asteroid::random_asteroid();
+        let asteroid = Asteroid::random_asteroid(ship);
         asteroids.push(asteroid);
     }
     let mut edges = Vec::new();
