@@ -2,11 +2,15 @@ use macroquad::{
     input::is_key_down,
     prelude::{
         draw_arc, draw_circle, draw_circle_lines, draw_rectangle, draw_text, is_key_pressed,
-        next_frame, screen_height, screen_width, Color, KeyCode, Vec2, BLACK, GREEN, RED, WHITE,
+        next_frame, screen_height, screen_width, Color, Conf, KeyCode, Vec2, BLACK, GREEN, RED,
+        WHITE,
     },
+    Window,
 };
 use rand::{thread_rng, Rng};
-use std::collections::HashMap;
+use std::thread;
+use std::{collections::HashMap, thread::JoinHandle};
+use tokio::time::{sleep, Duration};
 
 const DST_SIZE: f32 = 5.0;
 const SHIP_SIZE: f32 = 10.0;
@@ -269,56 +273,69 @@ async fn play_level(level: &usize) -> bool {
     }
 }
 
-async fn play_game() -> (bool, bool) {
-    let mut win = true;
-    for level in 1..50 {
-        if !play_level(&level).await {
-            win = false;
+async fn play_games() {
+    loop {
+        let mut win = true;
+        for level in 1..50 {
+            if !play_level(&level).await {
+                win = false;
+                break;
+            }
+            next_frame().await;
+        }
+        while !is_key_pressed(KeyCode::Y) && !is_key_pressed(KeyCode::N) {
+            if win {
+                draw_text(
+                    "YOU WIN!",
+                    screen_width() / 2.0 - 75.0,
+                    screen_height() / 2.0,
+                    30.0,
+                    WHITE,
+                );
+            } else {
+                draw_text(
+                    "YOU LOSE!",
+                    screen_width() / 2.0 - 75.0,
+                    screen_height() / 2.0,
+                    30.0,
+                    WHITE,
+                );
+            }
+            draw_text(
+                "PLAY AGAIN? (Y/N)",
+                screen_width() / 2.0 - 100.0,
+                screen_height() / 2.0 + 20.0,
+                30.0,
+                WHITE,
+            );
+            next_frame().await;
+        }
+
+        if is_key_pressed(KeyCode::N) {
             break;
         }
-        next_frame().await;
     }
-    while !is_key_pressed(KeyCode::Y) && !is_key_pressed(KeyCode::N) {
-        if win {
-            draw_text(
-                "YOU WIN!",
-                screen_width() / 2.0 - 75.0,
-                screen_height() / 2.0,
-                30.0,
-                WHITE,
-            );
-        } else {
-            draw_text(
-                "YOU LOSE!",
-                screen_width() / 2.0 - 75.0,
-                screen_height() / 2.0,
-                30.0,
-                WHITE,
-            );
-        }
-        draw_text(
-            "PLAY AGAIN? (Y/N)",
-            screen_width() / 2.0 - 100.0,
-            screen_height() / 2.0 + 20.0,
-            30.0,
-            WHITE,
-        );
-        next_frame().await;
-    }
-
-    let mut play_again = true;
-    if is_key_pressed(KeyCode::N) {
-        play_again = false;
-    }
-    (win, play_again)
 }
 
-#[macroquad::main("Wavey")]
+fn open_window() -> JoinHandle<()> {
+    thread::spawn(|| {
+        Window::from_config(
+            Conf {
+                sample_count: 4,
+                window_title: "Wavey".to_string(),
+                high_dpi: true,
+                ..Default::default()
+            },
+            play_games(),
+        );
+    })
+}
+
+#[tokio::main]
 async fn main() {
-    loop {
-        let (_win, play_again) = play_game().await;
-        if !play_again {
-            break;
-        }
+    let handle = open_window();
+    while !handle.is_finished() {
+        println!("main_thread");
+        sleep(Duration::from_secs(1)).await;
     }
 }
