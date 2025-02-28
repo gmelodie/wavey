@@ -269,50 +269,56 @@ async fn play_level(level: &usize) -> bool {
     }
 }
 
-async fn play_games() -> bool {
+async fn play_game() -> (bool, bool) {
+    let mut win = true;
     for level in 1..50 {
         if !play_level(&level).await {
-            return false;
+            win = false;
+            break;
         }
         next_frame().await;
     }
-    true
+    while !is_key_pressed(KeyCode::Y) && !is_key_pressed(KeyCode::N) {
+        if win {
+            draw_text(
+                "YOU WIN!",
+                screen_width() / 2.0 - 75.0,
+                screen_height() / 2.0,
+                30.0,
+                WHITE,
+            );
+        } else {
+            draw_text(
+                "YOU LOSE!",
+                screen_width() / 2.0 - 75.0,
+                screen_height() / 2.0,
+                30.0,
+                WHITE,
+            );
+        }
+        draw_text(
+            "PLAY AGAIN? (Y/N)",
+            screen_width() / 2.0 - 100.0,
+            screen_height() / 2.0 + 20.0,
+            30.0,
+            WHITE,
+        );
+        next_frame().await;
+    }
+
+    let mut play_again = true;
+    if is_key_pressed(KeyCode::N) {
+        play_again = false;
+    }
+    (win, play_again)
 }
 
 #[macroquad::main("Wavey")]
 async fn main() {
     loop {
-        let win = play_games().await;
-        while !is_key_pressed(KeyCode::Y) && !is_key_pressed(KeyCode::N) {
-            if win {
-                draw_text(
-                    "YOU WIN!",
-                    screen_width() / 2.0 - 75.0,
-                    screen_height() / 2.0,
-                    30.0,
-                    WHITE,
-                );
-            } else {
-                draw_text(
-                    "YOU LOSE!",
-                    screen_width() / 2.0 - 75.0,
-                    screen_height() / 2.0,
-                    30.0,
-                    WHITE,
-                );
-            }
-            draw_text(
-                "PLAY AGAIN? (Y/N)",
-                screen_width() / 2.0 - 100.0,
-                screen_height() / 2.0 + 20.0,
-                30.0,
-                WHITE,
-            );
-            next_frame().await;
-        }
-
-        if is_key_pressed(KeyCode::N) {
-            return;
+        let (_win, play_again) = play_game().await;
+        if !play_again {
+            break;
         }
     }
 }
